@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="utf-8">
+    <title>Baller - Földrengés Effekttel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            background: #111;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        #scene {
+            display: block;
+            width: 100%;
+            height: 100vh;
+            background: #111;
+            transition: transform 0.1s;
+        }
+        
+        .ui-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 15px;
+            box-sizing: border-box;
+            z-index: 10;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
+            pointer-events: none;
+        }
+        
+        .score-container {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        
+        .high-score {
+            font-size: 16px;
+            opacity: 0.8;
+            margin-top: 4px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            pointer-events: auto;
+        }
+        
+        button {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            backdrop-filter: blur(5px);
+            transition: all 0.2s;
+        }
+        
+        button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+        
+        /* Robbanás gomb stílusa */
+        #explosion-btn {
+            position: fixed;
+            left: 20px;
+            bottom: 20px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: rgba(255, 50, 50, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            z-index: 20;
+        }
+        
+        #explosion-btn.active {
+            background: rgba(255, 0, 0, 0.9);
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.8);
+        }
+        
+        /* Földrengés gomb stílusa */
+        #earthquake-btn {
+            position: fixed;
+            left: 90px;
+            bottom: 20px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: rgba(100, 150, 255, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            z-index: 20;
+        }
+        
+        #earthquake-btn.active {
+            background: rgba(70, 130, 255, 0.9);
+            box-shadow: 0 0 15px rgba(70, 130, 255, 0.8);
+        }
+        
+        .game-over {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: white;
+            font-size: 32px;
+            display: none;
+        }
+        
+        .game-over h2 {
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        
+        .instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            pointer-events: none;
+        }
+        
+        /* Célkereszt stílus */
+        .crosshair {
+            cursor: none;
+        }
+        
+        #custom-crosshair {
+            position: fixed;
+            width: 40px;
+            height: 40px;
+            pointer-events: none;
+            z-index: 30;
+            display: none;
+            transform: translate(-50%, -50%);
+        }
+        
+        .crosshair #custom-crosshair {
+            display: block;
+        }
+        
+        @media (max-width: 768px) {
+            .ui-container {
+                flex-direction: column;
+                gap: 15px;
+                align-items: flex-start;
+            }
+            
+            .controls {
+                align-self: flex-end;
+            }
+            
+            #explosion-btn, #earthquake-btn {
+                bottom: 15px;
+                width: 50px;
+                height: 50px;
+                font-size: 20px;
+            }
+            
+            #explosion-btn {
+                left: 15px;
+            }
+            
+            #earthquake-btn {
+                left: 80px;
+            }
+        }
+        
+        /* Rezgés animáció */
+        @keyframes shake {
+            0% { transform: translate(0, 0) rotate(0); }
+            10% { transform: translate(-5px, 5px) rotate(-1deg); }
+            20% { transform: translate(6px, -4px) rotate(1deg); }
+            30% { transform: translate(-7px, 6px) rotate(-2deg); }
+            40% { transform: translate(8px, -5px) rotate(2deg); }
+            50% { transform: translate(-6px, 4px) rotate(-1deg); }
+            60% { transform: translate(5px, -6px) rotate(1deg); }
+            70% { transform: translate(-4px, 7px) rotate(-2deg); }
+            80% { transform: translate(3px, -8px) rotate(2deg); }
+            90% { transform: translate(-2px, 6px) rotate(-1deg); }
+            100% { transform: translate(0, 0) rotate(0); }
+        }
+        
+        .shake {
+            animation: shake 0.8s cubic-bezier(.36,.07,.19,.97) both;
+        }
+    </style>
+</head>
+<body>
+    <div class="ui-container">
+        <div class="score-container">
+            <div class="current-score">Pontszám: <span id="score">0</span></div>
+            <div class="high-score">Rekord: <span id="high-score">0</span></div>
+        </div>
+        <div class="controls">
+            <button id="pause-btn">Szünet</button>
+            <button id="restart-btn">Új játék</button>
+        </div>
+    </div>
+    
+    <!-- Robbanás gomb -->
+    <button id="explosion-btn" title="Labda robbantása">💣</button>
+    
+    <!-- Földrengés gomb -->
+    <button id="earthquake-btn" title="Földrengés effektus">🌍</button>
+    
+    <!-- Egyedi célkereszt -->
+    <svg id="custom-crosshair" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="2" stroke-dasharray="5,5"/>
+        <circle cx="50" cy="50" r="25" fill="none" stroke="red" stroke-width="2"/>
+        <circle cx="50" cy="50" r="5" fill="red"/>
+        <line x1="50" y1="10" x2="50" y2="30" stroke="red" stroke-width="3"/>
+        <line x1="50" y1="70" x2="50" y2="90" stroke="red" stroke-width="3"/>
+        <line x1="10" y1="50" x2="30" y2="50" stroke="red" stroke-width="3"/>
+        <line x1="70" y1="50" x2="90" y2="50" stroke="red" stroke-width="3"/>
+    </svg>
+    
+    <div class="game-over" id="game-over">
+        <h2>Játék vége!</h2>
+        <p>Elért pontszám: <span id="final-score">0</span></p>
+        <button id="play-again">Új játék</button>
+    </div>
+    
+    <canvas id="scene"></canvas>
+    
+    <div class="instructions">
+        Kattints a konténer belsejébe a labda leejtéséhez
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/matter-js@0.19.0/build/matter.min.js"></script>
+    <script>
+        (function() {
+            // Játékállapot változók
+            let gamePaused = false;
+            let gameOver = false;
+            let score = 0;
+            let highScore = localStorage.getItem('ballerHighScore') || 0;
+            let explosionModeActive = false;
+            let earthquakeActive = false;
+            
+            // DOM elemek
+            const scoreElement = document.getElementById('score');
+            const highScoreElement = document.getElementById('high-score');
+            const finalScoreElement = document.getElementById('final-score');
+            const pauseButton = document.getElementById('pause-btn');
+            const restartButton = document.getElementById('restart-btn');
+            const playAgainButton = document.getElementById('play-again');
+            const gameOverScreen = document.getElementById('game-over');
+            const explosionButton = document.getElementById('explosion-btn');
+            const earthquakeButton = document.getElementById('earthquake-btn');
+            const crosshair = document.getElementById('custom-crosshair');
+            const scene = document.getElementById('scene');
+            
+            // High score frissítése
+            highScoreElement.textContent = highScore;
+            
+            const { Engine, Render, Runner, Bodies, Composite, Events, Vector, Body } = Matter;
+
+            const canvas = document.getElementById('scene');
+            const W = window.innerWidth;
+            const H = window.innerHeight;
+
+            const engine = Engine.create();
+            engine.gravity.y = 1;
+            const world = engine.world;
+
+            const render = Render.create({
+                canvas,
+                engine,
+                options: { 
+                    width: W, 
+                    height: H, 
+                    wireframes: false, 
+                    background: '#111', 
+                    pixelRatio: window.devicePixelRatio 
+                }
+            });
+            
+            Render.run(render);
+            const runner = Runner.create();
+            Runner.run(runner, engine);
+
+            // Konténer falak (láthatatlan)
+            const containerWidth = W * 0.25;
+            const containerHeight = H * 0.8;
+            const cx = W / 2, cy = H / 2 + 50;
+            const wallThickness = 60;
+
+            const containerWalls = [
+                Bodies.rectangle(cx, cy + containerHeight/2 + wallThickness/2, containerWidth, wallThickness, { 
+                    isStatic: true, 
+                    render: { visible: false } 
+                }),
+                Bodies.rectangle(cx - containerWidth/2 - wallThickness/2, cy, wallThickness, containerHeight + wallThickness*2, { 
+                    isStatic: true, 
+                    render: { visible: false } 
+                }),
+                Bodies.rectangle(cx + containerWidth/2 + wallThickness/2, cy, wallThickness, containerHeight + wallThickness*2, { 
+                    isStatic: true, 
+                    render: { visible: false } 
+                })
+            ];
+            Composite.add(world, containerWalls);
+
+            // Színek, méretek (50%-kal nagyobb, majd +20%)
+            const colors = ["#66c5cc","#f6cf71","#f89c74","#dcb0f2","#87c55f","#9eb9f3","#fe88b1","#c9db74","#8be0a4","#b497e7"];
+            const colorSizes = [12,16,22,30,40,50,62,76,92,110].map(s => s * 1.5 * 1.2); // +20%
+            const ballValues = colorSizes.map((s, i) => Math.pow(2, i));
+
+            function makeBall(x, y, colorIndex) {
+                const r = colorSizes[colorIndex];
+                const color = colors[colorIndex];
+                const ball = Bodies.circle(x, y, r, {
+                    restitution: 0.25,
+                    friction: 0.05,
+                    frictionAir: 0.002,
+                    density: 0.0015,
+                    render: {
+                        fillStyle: color, 
+                        strokeStyle: "#000", 
+                        lineWidth: 2
+                    }
+                });
+                ball.colorIndex = colorIndex;
+                ball.radius = r;
+                ball.value = ballValues[colorIndex];
+                ball.scored = false;
+                return ball;
+            }
+
+            // Következő labda előnézet
+            let nextIndex = getNextIndex();
+            let previewX = cx;
+
+            // Exponenciális ritkaság
+            function getNextIndex() {
+                const weights = colorSizes.map(r => Math.exp(-0.1 * (r - colorSizes[0])));
+                const sum = weights.reduce((a, b) => a + b, 0);
+                let rnd = Math.random() * sum;
+                for (let i = 0; i < weights.length; i++) {
+                    if (rnd < weights[i]) return i;
+                    rnd -= weights[i];
+                }
+                return weights.length - 1;
+            }
+
+            // Egér mozgatás kezelése
+            document.addEventListener("mousemove", e => {
+                if (gamePaused || gameOver) return;
+                
+                // Célkereszt pozíciójának frissítése
+                crosshair.style.left = e.clientX + 'px';
+                crosshair.style.top = e.clientY + 'px';
+                
+                const rect = canvas.getBoundingClientRect();
+                let mouseX = e.clientX - rect.left;
+                previewX = Math.max(
+                    cx - containerWidth/2 + colorSizes[nextIndex], 
+                    Math.min(cx + containerWidth/2 - colorSizes[nextIndex], mouseX)
+                );
+            });
+
+            // Touch support mobil eszközökre
+            canvas.addEventListener("touchmove", e => {
+                if (gamePaused || gameOver) return;
+                e.preventDefault();
+                
+                const rect = canvas.getBoundingClientRect();
+                let touchX = e.touches[0].clientX - rect.left;
+                previewX = Math.max(
+                    cx - containerWidth/2 + colorSizes[nextIndex], 
+                    Math.min(cx + containerWidth/2 - colorSizes[nextIndex], touchX)
+                );
+            });
+
+            // Pontszám frissítése
+            function updateScore(value) {
+                score += value;
+                scoreElement.textContent = score;
+                
+                // High score frissítése
+                if (score > highScore) {
+                    highScore = score;
+                    highScoreElement.textContent = highScore;
+                    localStorage.setItem('ballerHighScore', highScore);
+                }
+            }
+
+            // Overlay rajzolás
+            const ctx = render.context;
+            (function drawOverlay() {
+                requestAnimationFrame(drawOverlay);
+                if (gamePaused) return;
+                
+                ctx.clearRect(0, 0, W, H);
+
+                // konténer vizuális
+                ctx.save();
+                ctx.fillStyle = 'rgba(255,255,255,0.05)';
+                ctx.fillRect(cx - containerWidth/2, cy - containerHeight/2, containerWidth, containerHeight);
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(cx - containerWidth/2, cy - containerHeight/2, containerWidth, containerHeight);
+                ctx.restore();
+
+                // piros vonal a konténer magasságának 10%-ánál
+                ctx.save();
+                ctx.strokeStyle = "red";
+                ctx.lineWidth = 3;
+                const lineY = cy - containerHeight/2 + containerHeight * 0.1;
+                ctx.beginPath();
+                ctx.moveTo(cx - containerWidth/2, lineY);
+                ctx.lineTo(cx + containerWidth/2, lineY);
+                ctx.stroke();
+                ctx.restore();
+
+                // előnézet labda (csak ha nincs pause vagy game over)
+                if (!gameOver && !explosionModeActive) {
+                    ctx.save();
+                    const r = colorSizes[nextIndex];
+                    ctx.beginPath();
+                    ctx.arc(previewX, cy - containerHeight/2 - 50, r, 0, Math.PI * 2);
+                    ctx.fillStyle = colors[nextIndex];
+                    ctx.shadowColor = "#fff";
+                    ctx.shadowBlur = 15;
+                    ctx.fill();
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = "#000";
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                // labdák rajzolása
+                const balls = Composite.allBodies(world).filter(b => b.colorIndex !== undefined);
+                balls.forEach(ball => {
+                    const pos = ball.position;
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(pos.x, pos.y, ball.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = ball.render.fillStyle;
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(pos.x - ball.radius/3, pos.y - ball.radius/3, ball.radius/3, 0, Math.PI * 2);
+                    ctx.fillStyle = "rgba(255,255,255,0.5)";
+                    ctx.fill();
+                    ctx.restore();
+                });
+
+                // színskála - jobbra tolva, azonos méretű labdák a 4. méret 70%-án
+                ctx.save();
+                const scaleX = cx + containerWidth/2 + 80;
+                let startY = cy - containerHeight/2 + 20;
+                const scaleBallRadius = colorSizes[3] * 0.4; // 70%-ra zsugorítva
+                for (let i = 0; i < colors.length; i++) {
+                    ctx.fillStyle = colors[i];
+                    ctx.beginPath();
+                    ctx.arc(scaleX, startY + scaleBallRadius, scaleBallRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = "#000";
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    
+                    // Érték megjelenítése
+                    ctx.fillStyle = "white";
+                    ctx.font = "12px Arial";
+                    ctx.textAlign = "center";
+                    ctx.fillText(ballValues[i], scaleX, startY + scaleBallRadius * 2 + 12);
+                    
+                    startY += scaleBallRadius * 2 + 20;
+                }
+                ctx.restore();
+
+            })();
+
+            // Kattintás: ledobás
+            canvas.addEventListener("click", e => {
+                if (gamePaused || gameOver) return;
+                
+                // Ha robbantó mód aktív, akkor ne ejtsen le labdát
+                if (explosionModeActive) {
+                    handleExplosionClick(e);
+                    return;
+                }
+                
+                if (previewX > cx - containerWidth/2 + colorSizes[nextIndex] && 
+                    previewX < cx + containerWidth/2 - colorSizes[nextIndex]) {
+                    Composite.add(world, makeBall(previewX, cy - containerHeight/2 - 60, nextIndex));
+                    nextIndex = getNextIndex();
+                }
+            });
+
+            // Tap esemény mobil eszközökre
+            canvas.addEventListener("touchend", e => {
+                if (gamePaused || gameOver) return;
+                
+                // Ha robbantó mód aktív, akkor ne ejtsen le labdát
+                if (explosionModeActive) {
+                    handleExplosionClick(e);
+                    return;
+                }
+                
+                if (previewX > cx - containerWidth/2 + colorSizes[nextIndex] && 
+                    previewX < cx + containerWidth/2 - colorSizes[nextIndex]) {
+                    Composite.add(world, makeBall(previewX, cy - containerHeight/2 - 60, nextIndex));
+                    nextIndex = getNextIndex();
+                }
+            });
+
+            // Robbanás mód kezelése
+            explosionButton.addEventListener('click', toggleExplosionMode);
+            
+            function toggleExplosionMode() {
+                explosionModeActive = !explosionModeActive;
+                
+                if (explosionModeActive) {
+                    explosionButton.classList.add('active');
+                    document.body.classList.add('crosshair');
+                    explosionButton.title = "Robbanás mód aktív - kattints egy labdára a felrobbantásához";
+                    
+                    // Ha földrengés mód is aktív, kapcsoljuk ki
+                    if (earthquakeActive) {
+                        toggleEarthquakeMode();
+                    }
+                } else {
+                    explosionButton.classList.remove('active');
+                    document.body.classList.remove('crosshair');
+                    explosionButton.title = "Labda robbantása";
+                }
+            }
+            
+            // Földrengés mód kezelése
+            earthquakeButton.addEventListener('click', toggleEarthquakeMode);
+            
+            function toggleEarthquakeMode() {
+                if (earthquakeActive) return; // Már aktív, ne indítsuk újra
+                
+                earthquakeActive = true;
+                earthquakeButton.classList.add('active');
+                earthquakeButton.title = "Földrengés aktív";
+                
+                // Képernyő megrázása
+                scene.classList.add('shake');
+                
+                // Labdák megrázása - véletlenszerű erők alkalmazása
+                const balls = Composite.allBodies(world).filter(b => b.colorIndex !== undefined);
+                balls.forEach(ball => {
+                    const force = {
+                        x: (Math.random() - 0.5) * 0.05,
+                        y: (Math.random() - 0.5) * 0.05
+                    };
+                    Body.applyForce(ball, ball.position, force);
+                });
+                
+                // Ha robbantó mód is aktív, kapcsoljuk ki
+                if (explosionModeActive) {
+                    toggleExplosionMode();
+                }
+                
+                // 1 másodperc után kikapcsoljuk a földrengést
+                setTimeout(() => {
+                    scene.classList.remove('shake');
+                    earthquakeButton.classList.remove('active');
+                    earthquakeButton.title = "Földrengés effektus";
+                    earthquakeActive = false;
+                }, 800);
+            }
+            
+            function handleExplosionClick(e) {
+                if (!explosionModeActive) return;
+                
+                const rect = canvas.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+                
+                // Megkeressük a labdákat
+                const balls = Composite.allBodies(world).filter(b => b.colorIndex !== undefined);
+                
+                for (let ball of balls) {
+                    const dx = ball.position.x - clickX;
+                    const dy = ball.position.y - clickY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // Ha a kattintás a labdán belül volt
+                    if (distance <= ball.radius) {
+                        // Robbanás effektus
+                        createExplosionEffect(ball.position.x, ball.position.y, ball.render.fillStyle);
+                        
+                        // Labda eltávolítása
+                        Composite.remove(world, ball);
+                        
+                        // Robbanás mód kikapcsolása
+                        toggleExplosionMode();
+                        
+                        break;
+                    }
+                }
+            }
+            
+            function createExplosionEffect(x, y, color) {
+                // Robbanás részecskék létrehozása
+                const particles = [];
+                const particleCount = 15;
+                
+                for (let i = 0; i < particleCount; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 5 + Math.random() * 5;
+                    const velocity = {
+                        x: Math.cos(angle) * speed,
+                        y: Math.sin(angle) * speed
+                    };
+                    
+                    const particle = Bodies.circle(
+                        x, y, 5, {
+                            render: {
+                                fillStyle: color
+                            },
+                            frictionAir: 0.05,
+                            restitution: 0.7,
+                            density: 0.01,
+                            collisionFilter: {
+                                group: -1 // Csak az ütközést kerüljük el, ne más testekkel
+                            }
+                        }
+                    );
+                    
+                    Body.setVelocity(particle, velocity);
+                    particles.push(particle);
+                }
+                
+                Composite.add(world, particles);
+                
+                // 1 másodperc után eltávolítjuk a részecskéket
+                setTimeout(() => {
+                    particles.forEach(particle => {
+                        Composite.remove(world, particle);
+                    });
+                }, 1000);
+            }
+
+            // Ütközés: azonos színűek összeolvadnak
+            Events.on(engine, "collisionStart", event => {
+                if (gamePaused) return;
+                
+                event.pairs.forEach(pair => {
+                    const { bodyA, bodyB } = pair;
+                    if (bodyA.colorIndex === undefined || bodyB.colorIndex === undefined) return;
+                    if (bodyA.colorIndex === bodyB.colorIndex) {
+                        const newIndex = (bodyA.colorIndex + 1) % colors.length;
+                        const newSize = colorSizes[newIndex];
+                        const newBall = Bodies.circle(
+                            (bodyA.position.x + bodyB.position.x) / 2,
+                            (bodyA.position.y + bodyB.position.y) / 2,
+                            newSize, {
+                                restitution: 0.25,
+                                friction: 0.05,
+                                frictionAir: 0.002,
+                                density: 0.0015,
+                                render: {
+                                    fillStyle: colors[newIndex], 
+                                    strokeStyle: "#000", 
+                                    lineWidth: 2
+                                }
+                            }
+                        );
+                        newBall.colorIndex = newIndex;
+                        newBall.radius = newSize;
+                        newBall.value = ballValues[newIndex];
+                        newBall.scored = false;
+
+                        const vel = Vector.mult(Vector.add(bodyA.velocity, bodyB.velocity), 0.5);
+                        Body.setVelocity(newBall, vel);
+
+                        Composite.remove(world, bodyA);
+                        Composite.remove(world, bodyB);
+                        Composite.add(world, newBall);
+
+                        updateScore(newBall.value);
+                    }
+                });
+            });
+
+            // Leeső labdák pontszáma és veszteség ellenőrzés
+            Events.on(engine, 'afterUpdate', function() {
+                if (gamePaused) return;
+                
+                const balls = Composite.allBodies(world).filter(b => b.colorIndex !== undefined);
+                balls.forEach(ball => {
+                    // pontszám
+                    if (!ball.scored && (ball.position.y + ball.radius >= cy + containerHeight/2 - 2)) {
+                        updateScore(ball.value);
+                        ball.scored = true;
+                    }
+                });
+
+                // veszteség ellenőrzés a piros vonalhoz (csak megállt labdák)
+                const loseLineY = cy - containerHeight/2 + containerHeight * 0.1;
+                for (let ball of balls) {
+                    if (ball.speed < 0.1) { // csak a fizikailag megállt labda
+                        const top = ball.position.y - ball.radius;
+                        const bottom = ball.position.y + ball.radius;
+                        if (bottom > loseLineY && top < loseLineY) { // legalább részben átlépi
+                            const overlap = bottom - loseLineY;
+                            if (overlap >= ball.radius) { // legalább 50% túl lóg
+                                endGame();
+                                return;
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Játékvezérlés gombok
+            pauseButton.addEventListener('click', togglePause);
+            restartButton.addEventListener('click', restartGame);
+            playAgainButton.addEventListener('click', restartGame);
+            
+            function togglePause() {
+                gamePaused = !gamePaused;
+                
+                if (gamePaused) {
+                    pauseButton.textContent = "Folytatás";
+                    Runner.stop(runner);
+                    
+                    // Ha robbantó mód aktív, kapcsoljuk ki szüneteltetéskor
+                    if (explosionModeActive) {
+                        toggleExplosionMode();
+                    }
+                } else {
+                    pauseButton.textContent = "Szünet";
+                    Runner.run(runner, engine);
+                }
+            }
+            
+            function endGame() {
+                gameOver = true;
+                Runner.stop(runner);
+                
+                finalScoreElement.textContent = score;
+                gameOverScreen.style.display = 'flex';
+                
+                // Ha robbantó mód aktív, kapcsoljuk ki
+                if (explosionModeActive) {
+                    toggleExplosionMode();
+                }
+            }
+            
+            function restartGame() {
+                // Minden test eltávolítása
+                Composite.clear(world, false);
+                
+                // Falak újra hozzáadása
+                Composite.add(world, containerWalls);
+                
+                // Változók alaphelyzetbe állítása
+                score = 0;
+                scoreElement.textContent = score;
+                nextIndex = getNextIndex();
+                gamePaused = false;
+                gameOver = false;
+                pauseButton.textContent = "Szünet";
+                
+                // Robbanás mód kikapcsolása, ha aktív
+                if (explosionModeActive) {
+                    toggleExplosionMode();
+                }
+                
+                // Játékképernyő elrejtése
+                gameOverScreen.style.display = 'none';
+                
+                // Fizika újraindítása
+                Runner.run(runner, engine);
+            }
+        })();
+    </script>
+</body>
+</html>
