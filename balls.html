@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<title>Baller</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+html, body { margin:0; height:100%; background:#111; overflow:hidden; }
+#scene { display:block; width:100%; height:100vh; background:#111; }
+.label {
+  position:fixed; left:12px; top:12px; color:#eee; font-family:system-ui, sans-serif;
+  background:rgba(0,0,0,0.35); padding:8px 10px; border-radius:10px; font-size:14px;
+}
+</style>
+</head>
+<body>
+<div class="label">Kattints a konténer belsejébe a labda leejtéséhez</div>
+<canvas id="scene"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/matter-js@0.19.0/build/matter.min.js"></script>
+<script>
+(function() {
+const { Engine, Render, Runner, Bodies, Composite, Events, Vector, Body } = Matter;
+
+const canvas = document.getElementById('scene');
+const W = window.innerWidth;
+const H = window.innerHeight;
+
+const engine = Engine.create();
+engine.gravity.y = 1;
+const world = engine.world;
+
+const render = Render.create({
+  canvas,
+  engine,
+  options: { width: W, height: H, wireframes:false, background:'#111', pixelRatio:window.devicePixelRatio }
+});
+Render.run(render);
+Runner.run(Runner.create(), engine);
+
+// Konténer falak (láthatatlan)
+const containerWidth = W*0.25;
+const containerHeight = H*0.8;
+const cx = W/2, cy = H/2 + 50;
+const wallThickness = 60;
+
+const containerWalls = [
+  Bodies.rectangle(cx, cy + containerHeight/2 + wallThickness/2, containerWidth, wallThickness, { isStatic:true, render:{visible:false} }),
+  Bodies.rectangle(cx - containerWidth/2 - wallThickness/2, cy, wallThickness, containerHeight + wallThickness*2, { isStatic:true, render:{visible:false} }),
+  Bodies.rectangle(cx + containerWidth/2 + wallThickness/2, cy, wallThickness, containerHeight + wallThickness*2, { isStatic:true, render:{visible:false} })
+];
+Composite.add(world, containerWalls);
+
+// Színek, méretek (50%-kal nagyobb, majd +20%)
+const colors = ["#66c5cc","#f6cf71","#f89c74","#dcb0f2","#87c55f","#9eb9f3","#fe88b1","#c9db74","#8be0a4","#b497e7"];
+const colorSizes = [12,16,22,30,40,50,62,76,92,110].map(s => s * 1.5 * 1.2); // +20%
+const ballValues = colorSizes.map((s,i)=>Math.pow(2,i));
+
+function makeBall(x,y,colorIndex){
+  const r = colorSizes[colorIndex];
+  const color = colors[colorIndex];
+  const ball=Bodies.circle(x,y,r,{
+    restitution:0.25,
+    friction:0.05,
+    frictionAir:0.002,
+    density:0.0015,
+    render:{fillStyle:color, strokeStyle:"#000", lineWidth:2}
+  });
+  ball.colorIndex = colorIndex;
+  ball.radius = r;
+  ball.value = ballValues[colorIndex];
+  ball.scored = false;
+  return ball;
+}
+
+// Következő labda előnézet
+let nextIndex = getNextIndex();
+let previewX = cx;
+
+// Exponenciális ritkaság
+function getNextIndex(){
+  const weights = colorSizes.map(r => Math.exp(-0.1*(r-colorSizes[0])));
+  const sum = weights.reduce((a,b)=>a+b,0);
+  let rnd = Math.random()*sum;
+  for(let i=0;i<weights.length;i++){
+    if(rnd < weights[i]) return i;
+    rnd -= weights[i];
+  }
+  return weights.length-1;
+}
+
+// Egér követés
+canvas.addEventListener("mousemove", e=>{
+  const rect = canvas.getBoundingClientRect();
+  let mouseX = e.clientX - rect.left;
+  previewX = Math.max(cx - containerWidth/2 + colorSizes[nextIndex], Math.min(cx + containerWidth/2 - colorSizes[nextIndex], mouseX));
+});
+
+// Pontszám
+let score = 0;
+
+// Overlay rajzolás
+const ctx = render.context;
+(function drawOverlay(){
+  requestAnimationFrame(drawOverlay);
+  ctx.clearRect(0,0,W,H);
+
+  // konténer vizuális
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.05)';
+  ctx.fillRect(cx - containerWidth/2, cy - containerHeight/2, containerWidth, containerHeight);
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(cx - containerWidth/2, cy - containerHeight/2, containerWidth, containerHeight);
+  ctx.restore();
+
+  // piros vonal a konténer magasságának 10%-ánál
+  ctx.save();
+  ctx.strokeStyle = "red";
+  ctx.lineWidth = 3;
+  const lineY = cy - containerHeight/2 + containerHeight*0.1;
+  ctx.beginPath();
+  ctx.moveTo(cx - containerWidth/2, lineY);
+  ctx.lineTo(cx + containerWidth/2, lineY);
+  ctx.stroke();
+  ctx.restore();
+
+  // pontszám
+  ctx.save();
+  ctx.fillStyle = "#fff";
+  ctx.font = "20px system-ui";
+  ctx.fillText("Pontszám: "+score, cx - containerWidth/2 - 150, cy - containerHeight/2 + 30);
+  ctx.restore();
+
+  // előnézet labda
+  ctx.save();
+  const r = colorSizes[nextIndex];
+  ctx.beginPath();
+  ctx.arc(previewX, cy - containerHeight/2 - 50, r, 0, Math.PI*2);
+  ctx.fillStyle = colors[nextIndex];
+  ctx.shadowColor = "#fff";
+  ctx.shadowBlur = 15;
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#000";
+  ctx.stroke();
+  ctx.restore();
+
+  // labdák rajzolása
+  const balls = Composite.allBodies(world).filter(b=>b.colorIndex!==undefined);
+  balls.forEach(ball=>{
+    const pos = ball.position;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(pos.x,pos.y,ball.radius,0,Math.PI*2);
+    ctx.fillStyle = ball.render.fillStyle;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(pos.x - ball.radius/3, pos.y - ball.radius/3, ball.radius/3,0,Math.PI*2);
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.fill();
+    ctx.restore();
+  });
+
+  // színskála – jobbra tolva, azonos méretű labdák a 4. méret 70%-án
+  ctx.save();
+  const scaleX = cx + containerWidth/2 + 80;
+  let startY = cy - containerHeight/2 + 20;
+  const scaleBallRadius = colorSizes[3] * 0.4; // 70%-ra zsugorítva
+  for(let i=0;i<colors.length;i++){
+      ctx.fillStyle = colors[i];
+      ctx.beginPath();
+      ctx.arc(scaleX, startY + scaleBallRadius, scaleBallRadius, 0, Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      startY += scaleBallRadius*2 + 6;
+  }
+  ctx.restore();
+
+})();
+
+// Kattintás: ledobás
+canvas.addEventListener("click", e=>{
+  if(previewX > cx - containerWidth/2 + colorSizes[nextIndex] && previewX < cx + containerWidth/2 - colorSizes[nextIndex]){
+    Composite.add(world, makeBall(previewX, cy - containerHeight/2 - 60, nextIndex));
+    nextIndex = getNextIndex();
+  }
+});
+
+// Ütközés: azonos színűek összeolvadnak
+Events.on(engine, "collisionStart", event=>{
+  event.pairs.forEach(pair=>{
+    const { bodyA, bodyB } = pair;
+    if(bodyA.colorIndex===undefined || bodyB.colorIndex===undefined) return;
+    if(bodyA.colorIndex === bodyB.colorIndex){
+      const newIndex = (bodyA.colorIndex + 1) % colors.length;
+      const newSize = colorSizes[newIndex];
+      const newBall = Bodies.circle(
+        (bodyA.position.x + bodyB.position.x)/2,
+        (bodyA.position.y + bodyB.position.y)/2,
+        newSize,{
+          restitution:0.25,
+          friction:0.05,
+          frictionAir:0.002,
+          density:0.0015,
+          render:{fillStyle:colors[newIndex], strokeStyle:"#000", lineWidth:2}
+        }
+      );
+      newBall.colorIndex = newIndex;
+      newBall.radius = newSize;
+      newBall.value = ballValues[newIndex];
+      newBall.scored = false;
+
+      const vel = Vector.mult(Vector.add(bodyA.velocity,bodyB.velocity),0.5);
+      Body.setVelocity(newBall, vel);
+
+      Composite.remove(world, bodyA);
+      Composite.remove(world, bodyB);
+      Composite.add(world, newBall);
+
+      score += newBall.value;
+    }
+  });
+});
+
+// Leeső labdák pontszáma és veszteség ellenőrzés
+Events.on(engine, 'afterUpdate', function() {
+    const balls = Composite.allBodies(world).filter(b => b.colorIndex !== undefined);
+    balls.forEach(ball => {
+        // pontszám
+        if(!ball.scored && (ball.position.y + ball.radius >= cy + containerHeight/2 - 2)) {
+            score += ball.value;
+            ball.scored = true;
+        }
+    });
+
+    // veszteség ellenőrzés a piros vonalhoz (csak megállt labdák)
+    const loseLineY = cy - containerHeight/2 + containerHeight*0.1;
+    for(let ball of balls){
+        if(ball.speed < 0.1){ // csak a fizikailag megállt labda
+            const top = ball.position.y - ball.radius;
+            const bottom = ball.position.y + ball.radius;
+            if(bottom > loseLineY && top < loseLineY){ // legalább részben átlépi
+                const overlap = bottom - loseLineY;
+                if(overlap >= ball.radius){ // legalább 50% túl lóg
+                    alert("Elvesztetted a játékot!");
+                    Composite.clear(world, false);
+                    return;
+                }
+            }
+        }
+    }
+});
+
+})();
+</script>
+</body>
+</html>
